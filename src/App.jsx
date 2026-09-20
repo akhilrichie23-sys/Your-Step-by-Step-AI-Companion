@@ -57,6 +57,7 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [whyModal, setWhyModal] = useState(null);
   const [imagePreviewModal, setImagePreviewModal] = useState(null);
+  const [confirmModal, setConfirmModal] = useState(null);
 
   // Camera capture modal
   const [cameraModal, setCameraModal] = useState(false);
@@ -321,43 +322,58 @@ export default function App() {
   };
 
   // --- Clear Current Chat Messages ---
-  const handleClearCurrentChat = async () => {
+  const handleClearCurrentChat = () => {
     if (!activeTask) return;
-    if (confirm("Clear all messages in this conversation and restart from Step 1?")) {
-      const targetId = activeTask._id || activeTask.id;
-      const resetTask = {
-        ...activeTask,
-        history: [],
-        currentStepNum: 1,
-        completedSteps: 0,
-        remainingSteps: activeTask.totalSteps || 5,
-        status: 'Active'
-      };
+    setConfirmModal({
+      title: "Clear Conversation History?",
+      message: "This will remove the current messages and reset your progress back to Step 1. Your project goal and title will stay safe.",
+      confirmText: "Yes, Clear Chat",
+      icon: "eraser",
+      onConfirm: async () => {
+        const targetId = activeTask._id || activeTask.id;
+        const resetTask = {
+          ...activeTask,
+          history: [],
+          currentStepNum: 1,
+          completedSteps: 0,
+          remainingSteps: activeTask.totalSteps || 5,
+          status: 'Active'
+        };
 
-      setTasks(prev => prev.map(t => (t._id === targetId || t.id === targetId) ? resetTask : t));
-      if (activeTask._id) {
-        await taskApi.clearChat(activeTask._id);
+        setTasks(prev => prev.map(t => (t._id === targetId || t.id === targetId) ? resetTask : t));
+        if (activeTask._id) {
+          await taskApi.clearChat(activeTask._id);
+        }
+        setConfirmModal(null);
       }
-    }
+    });
   };
 
   // --- Delete Whole Task ---
-  const handleDeleteTask = async (id, e) => {
+  const handleDeleteTask = (id, e) => {
     if (e) e.stopPropagation();
-    if (confirm("Are you sure you want to permanently delete this project?")) {
-      const remaining = tasks.filter(t => (t._id !== id && t.id !== id));
-      setTasks(remaining);
-      if ((activeTaskId === id) && remaining.length > 0) {
-        setActiveTaskId(remaining[0]._id || remaining[0].id);
-      } else if (remaining.length === 0) {
-        setActiveTaskId(null);
+    setConfirmModal({
+      title: "Delete This Project?",
+      message: "This project and all associated steps and photos will be permanently deleted from MongoDB Atlas.",
+      confirmText: "Delete Project",
+      isDestructive: true,
+      icon: "trash",
+      onConfirm: async () => {
+        const remaining = tasks.filter(t => (t._id !== id && t.id !== id));
+        setTasks(remaining);
+        if ((activeTaskId === id) && remaining.length > 0) {
+          setActiveTaskId(remaining[0]._id || remaining[0].id);
+        } else if (remaining.length === 0) {
+          setActiveTaskId(null);
+        }
+        if (selectedTaskForDetails?._id === id || selectedTaskForDetails?.id === id) {
+          setSelectedTaskForDetails(null);
+          setActiveTab('tasks_list');
+        }
+        await taskApi.deleteTask(id);
+        setConfirmModal(null);
       }
-      if (selectedTaskForDetails?._id === id || selectedTaskForDetails?.id === id) {
-        setSelectedTaskForDetails(null);
-        setActiveTab('tasks_list');
-      }
-      await taskApi.deleteTask(id);
-    }
+    });
   };
 
   return (
@@ -1432,6 +1448,52 @@ export default function App() {
             >
               ✕
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== CUSTOM CONFIRMATION MODAL ===================== */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="w-full max-w-md glass-panel rounded-3xl p-6 space-y-4 shadow-2xl border border-slate-700">
+            <div className="flex items-center space-x-3">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${confirmModal.isDestructive ? 'bg-red-500/15 text-red-400 border border-red-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'}`}>
+                {confirmModal.icon === 'trash' ? (
+                  <Trash2 className="w-5 h-5 text-red-400" />
+                ) : (
+                  <Eraser className="w-5 h-5 text-emerald-400" />
+                )}
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-white">{confirmModal.title}</h3>
+                <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">Confirmation Required</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800 leading-relaxed">
+              {confirmModal.message}
+            </p>
+
+            <div className="flex space-x-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl border border-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmModal.onConfirm}
+                className={`flex-1 py-3 font-bold text-xs rounded-xl transition shadow-lg ${
+                  confirmModal.isDestructive
+                    ? 'bg-red-500 hover:bg-red-400 text-white shadow-red-500/20'
+                    : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
+                }`}
+              >
+                {confirmModal.confirmText || 'Confirm'}
+              </button>
+            </div>
           </div>
         </div>
       )}
