@@ -1,4 +1,4 @@
-export async function analyzeWithGuider({ prompt, image, task, apiKey, safetyEnabled }) {
+export async function analyzeWithGuider({ prompt, image, task, apiKey, safetyEnabled, studentSafetyMode }) {
   const text = (prompt || '').toLowerCase().trim();
   const hasImage = Boolean(image);
   const step = task.currentStepNum;
@@ -168,13 +168,26 @@ GUIDELINES:
     };
   }
 
+  // Helper to enrich safety warnings when studentSafetyMode is active
+  const formatSafety = (baseWarning) => {
+    if (!safetyEnabled) return null;
+    if (!baseWarning && !studentSafetyMode) return null;
+    if (studentSafetyMode) {
+      if (baseWarning) {
+        return `[STUDENT SAFETY] ${baseWarning} (Adult supervision recommended for minors).`;
+      }
+      return '[STUDENT SAFETY] Ensure you are working in a well-ventilated, clutter-free area with safety gear.';
+    }
+    return baseWarning;
+  };
+
   if (text.includes('issue') || text.includes('problem') || text.includes('stuck') || text.includes('help') || text.includes('failed')) {
     return {
       isChat: false,
       status: `Troubleshooting detected at Step ${step}.`,
       step: `Let's correct this: gently wipe away any excess residue or release tension on the edges, then align from the reference point.`,
       why: `Correcting small misalignments early prevents permanent defects down the line.`,
-      safety: safetyEnabled ? 'Work at a steady pace and keep your hands dry.' : null,
+      safety: formatSafety('Work at a steady pace and keep your hands dry.'),
       promptForPhoto: `Show me the corrected alignment before we proceed.`,
       isCompleted: false,
       stepNumber: step
@@ -187,7 +200,7 @@ GUIDELINES:
       status: `Addressing paper roughness at Step ${step}.`,
       step: `Place a clean sheet of parchment paper or a thin pressing cloth over the rough paper, and gently iron over it on low-to-medium heat (no steam) to flatten the fibers.`,
       why: `Gentle heat and flat pressure smooth out rough cellulose fibers and uneven bumps, producing a clean, uniform paper surface.`,
-      safety: safetyEnabled ? 'Use caution with the warm iron and keep hands away from the heated surface.' : null,
+      safety: formatSafety('Use caution with the warm iron and keep hands away from the heated surface.'),
       promptForPhoto: `Take a photo of the smoothed, ironed paper surface.`,
       isCompleted: step >= task.totalSteps,
       stepNumber: step
@@ -201,35 +214,35 @@ GUIDELINES:
         status: hasImage ? "Your torn paper mixture is softening properly in the water." : "Initial materials registered.",
         step: "Transfer soaked scraps into a blender (1:4 ratio with warm water) and pulse in 5-second bursts until it forms a smooth slurry.",
         why: "Short bursts separate fibers without breaking them down too finely, giving strength to the paper.",
-        safety: safetyEnabled ? "Ensure the blender lid is securely held down." : null,
+        safety: formatSafety("Ensure the blender lid is securely held down and blades are fully stopped before opening."),
         promptForPhoto: "Snap a photo of the blended pulp texture."
       },
       {
         status: hasImage ? "The blended pulp has reached an optimal fiber consistency." : "Pulp slurry is ready.",
         step: "Pour the pulp into your shallow basin, stir thoroughly with your fingers, and submerge the deckle screen horizontally.",
         why: "Even distribution in the water bath is what ensures equal thickness across the whole page.",
-        safety: null,
+        safety: formatSafety(null),
         promptForPhoto: "Show me the mesh frame lifted straight above the water."
       },
       {
         status: hasImage ? "The wet pulp sheet is cleanly formed across the mesh surface." : "Sheet formation verified.",
         step: "Press the frame face-down onto an absorbent cloth (couching) and dab the back with a sponge to transfer the sheet.",
         why: "Couching transfers the fragile wet sheet without tearing delicate fiber interlocks.",
-        safety: null,
+        safety: formatSafety(null),
         promptForPhoto: "Show me the sheet lying flat on your towel."
       },
       {
         status: hasImage ? "Smooth transfer achieved with no corner folds." : "Transfer successful.",
         step: "Place a dry pressing board and heavy books over the sheet, letting it press under weight for 4 hours until dry.",
         why: "Continuous even weight forces out moisture while keeping the sheet flat as it dries.",
-        safety: null,
+        safety: formatSafety(null),
         promptForPhoto: "Show me the dried paper sheet."
       },
       {
         status: hasImage ? "The dried paper sheet has been inspected." : "Paper dried and ready for smoothing.",
         step: "The paper is rough, so place a thin cloth or parchment paper over the sheet and iron the paper gently on low-to-medium heat (no steam) to smooth the surface.",
         why: "Ironing with gentle heat flattens raised cellulose fibers and gives the handmade paper a crisp, smooth finish.",
-        safety: safetyEnabled ? "Use caution with the warm iron and do not leave it resting in one spot." : null,
+        safety: formatSafety("Use caution with the warm iron and do not leave it resting in one spot."),
         promptForPhoto: "Take a picture of your finished, smooth ironed paper.",
         isCompleted: true
       }
@@ -254,7 +267,7 @@ GUIDELINES:
       ? "Task Complete! Do a final inspection of all seams and surface finishes."
       : `Step ${step}: Prepare your primary materials and align the first component carefully.`,
     why: "Proper alignment in the opening stage prevents uneven load distribution later.",
-    safety: safetyEnabled ? "Keep your workspace clear of clutter and wear eye protection if required." : null,
+    safety: formatSafety("Keep your workspace clear of clutter and wear eye protection if required."),
     promptForPhoto: isFinal ? "Take a victory photo of your finished creation!" : "Show me a photo after setting up this first piece.",
     isCompleted: isFinal,
     stepNumber: Math.min(task.totalSteps, step + 1)

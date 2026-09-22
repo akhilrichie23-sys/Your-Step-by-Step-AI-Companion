@@ -195,14 +195,34 @@ export default function App() {
     }
   };
 
-  const capturePhoto = () => {
+  const sanitizeImage = (dataUrl) => {
+    if (!privacyFilter) return Promise.resolve(dataUrl);
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width || 640;
+        canvas.height = img.naturalHeight || img.height || 480;
+        const ctx = canvas.getContext('2d');
+        // Render raw pixels to clean metadata / EXIF tags
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
+  const capturePhoto = async () => {
     if (videoRef.current && videoRef.current.srcObject) {
       const canvas = document.createElement('canvas');
       canvas.width = videoRef.current.videoWidth || 640;
       canvas.height = videoRef.current.videoHeight || 480;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      setSelectedImage(canvas.toDataURL('image/jpeg', 0.85));
+      const raw = canvas.toDataURL('image/jpeg', 0.85);
+      const clean = await sanitizeImage(raw);
+      setSelectedImage(clean);
       stopCameraStream();
     } else {
       setSelectedImage("https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=800&auto=format&fit=crop&q=80");
@@ -222,7 +242,10 @@ export default function App() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => setSelectedImage(reader.result);
+      reader.onloadend = async () => {
+        const cleaned = await sanitizeImage(reader.result);
+        setSelectedImage(cleaned);
+      };
       reader.readAsDataURL(file);
     }
   };
@@ -282,7 +305,8 @@ export default function App() {
         image: imgToSend,
         task: updatedTask,
         apiKey,
-        safetyEnabled
+        safetyEnabled,
+        studentSafetyMode
       });
 
       if (aiResponse.isCompleted) {
@@ -291,6 +315,26 @@ export default function App() {
           spread: 80,
           origin: { y: 0.6 }
         });
+      }
+
+      // Audio feedback chime on step completion / transition
+      if (audioFeedback && !aiResponse.isChat && typeof window !== 'undefined' && window.AudioContext) {
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+          osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
+          gain.gain.setValueAtTime(0.1, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.25);
+        } catch (e) {
+          // Audio cue fallback
+        }
       }
 
       const isChatMsg = Boolean(aiResponse.isChat);
@@ -554,6 +598,18 @@ export default function App() {
               </div>
               <span className="text-[10px] text-slate-500 font-mono">{tasks.length}</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('profile')}
+              className={`w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
+                activeTab === 'profile' 
+                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850/50'
+              }`}
+            >
+              <span className="text-sm leading-none">{profile.avatar || '🚀'}</span>
+              <span className="truncate">{profile.name || t.profile}</span>
+            </button>
           </nav>
 
           {/* Recent Conversations / Chats in Sidebar */}
@@ -710,10 +766,11 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab('profile')}
-              className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center text-xs font-bold transition border border-slate-700"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 flex items-center space-x-2 text-xs font-bold transition border border-slate-700 shadow-sm"
               title={t.profile}
             >
-              🚀
+              <span className="text-sm">{profile.avatar || '🚀'}</span>
+              <span className="hidden sm:inline text-[11px] font-semibold text-slate-300 truncate max-w-[100px]">{profile.name}</span>
             </button>
           </div>
         </header>
@@ -728,20 +785,39 @@ export default function App() {
               {/* Hero Banner */}
               <div className="glass-panel p-6 md:p-8 rounded-3xl relative overflow-hidden">
                 <div className="absolute -right-12 -top-12 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-                <div className="relative z-10 space-y-3 max-w-2xl">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold tracking-wider uppercase text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-                      {t.stepByStepBadge}
-                    </span>
-                    <span className="text-slate-500">•</span>
-                    <span className="text-xs text-slate-400">{t.dbConnected}</span>
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="space-y-3 max-w-2xl">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs font-bold tracking-wider uppercase text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                        {t.stepByStepBadge}
+                      </span>
+                      <span className="text-slate-500">•</span>
+                      <span className="text-xs text-slate-400">{t.dbConnected}</span>
+                    </div>
+                    <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight leading-tight">
+                      {t.heroTitle}
+                    </h2>
+                    <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
+                      {t.heroSub}
+                    </p>
                   </div>
-                  <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight leading-tight">
-                    {t.heroTitle}
-                  </h2>
-                  <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
-                    {t.heroSub}
-                  </p>
+
+                  {/* Personalized Maker Profile Widget */}
+                  <div 
+                    onClick={() => setActiveTab('profile')}
+                    className="shrink-0 p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-emerald-500/40 transition cursor-pointer flex items-center space-x-3.5 group shadow-lg"
+                  >
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 text-2xl flex items-center justify-center font-bold shadow-glow-emerald group-hover:scale-105 transition">
+                      {profile.avatar || '🚀'}
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-1.5">
+                        <span className="text-xs font-bold text-white group-hover:text-emerald-300 transition">{profile.name}</span>
+                        <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-semibold">{profile.skill}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate max-w-[140px] mt-0.5">{profile.title}</div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -979,6 +1055,11 @@ export default function App() {
                   <div key={i} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'} animate-fadeIn`}>
                     {msg.sender === 'user' ? (
                       <div className="max-w-[85%] md:max-w-[70%] bg-[#15223f] text-slate-100 rounded-3xl rounded-tr-md p-4 border border-slate-700/80 shadow-md text-xs space-y-2">
+                        <div className="flex items-center space-x-1.5 text-emerald-400 font-bold text-[10px] pb-1 border-b border-slate-700/50">
+                          <span>{profile.avatar || '🚀'}</span>
+                          <span className="text-slate-200">{profile.name || 'You'}</span>
+                          <span className="text-[9px] text-emerald-400/80 font-normal">({profile.skill})</span>
+                        </div>
                         {msg.image && (
                           <div 
                             onClick={() => setImagePreviewModal(msg.image)}

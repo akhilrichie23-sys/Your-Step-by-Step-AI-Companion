@@ -93,7 +93,7 @@ describe('GUIDER App Component Rendering & Internationalization', () => {
     expect(screen.getByText('डैशबोर्ड')).toBeInTheDocument();
   });
 
-  it('allows user to open and edit profile details', () => {
+  it('allows user to edit profile and updates information across the whole website', () => {
     render(<App />);
     const profileBtn = screen.getByTitle('Profile');
     fireEvent.click(profileBtn);
@@ -101,8 +101,16 @@ describe('GUIDER App Component Rendering & Internationalization', () => {
     const editBtn = screen.getByText('Edit Profile');
     fireEvent.click(editBtn);
 
-    expect(screen.getByText('Save Profile')).toBeInTheDocument();
-    expect(screen.getByText('Choose Avatar')).toBeInTheDocument();
+    // Change the name input
+    const nameInput = screen.getByDisplayValue('Student Maker');
+    fireEvent.change(nameInput, { target: { value: 'Alex The Maker' } });
+
+    const saveBtn = screen.getByText('Save Profile');
+    fireEvent.click(saveBtn);
+
+    // Check that Alex The Maker appears across multiple places (header, sidebar, profile)
+    const matches = screen.getAllByText('Alex The Maker');
+    expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 
   it('displays enhanced security and safety controls in settings', () => {
