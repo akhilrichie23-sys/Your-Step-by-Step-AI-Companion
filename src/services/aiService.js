@@ -3,10 +3,10 @@ export async function analyzeWithGuider({ prompt, image, task, apiKey, safetyEna
   const hasImage = Boolean(image);
   const step = task.currentStepNum;
 
-  // If API key is provided and looks valid, call Google Gemini 1.5 Flash
-  if (apiKey && apiKey.trim().startsWith('AIza')) {
+  // If API key is provided and looks valid, call Google Gemini Vision AI
+  if (apiKey && apiKey.trim().length > 10) {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey.trim()}`;
       
       const systemInstruction = `You are GUIDER, the friendly, intelligent hands-on AI Companion.
 The user is talking with you.

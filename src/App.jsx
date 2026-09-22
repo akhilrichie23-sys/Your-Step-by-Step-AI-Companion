@@ -1643,7 +1643,7 @@ export default function App() {
                 </p>
                 <input
                   type="password"
-                  placeholder="AIzaSy..."
+                  placeholder="Paste your Gemini API key (AQ... or AIza...)"
                   value={apiKey}
                   onChange={(e) => {
                     setApiKey(e.target.value);
