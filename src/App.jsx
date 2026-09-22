@@ -26,7 +26,12 @@ import {
   MessageSquarePlus,
   MessageSquare,
   Eraser,
-  Database
+  Database,
+  ShieldCheck,
+  ShieldAlert,
+  Edit3,
+  Save,
+  Lock
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CATEGORIES } from './data/initialTasks';
@@ -55,10 +60,28 @@ export default function App() {
   const [selectedTaskForDetails, setSelectedTaskForDetails] = useState(null);
   const [dbConnected, setDbConnected] = useState(true);
 
-  // Settings State
+  // Settings State & Enhanced Security
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('guider_api_key') || '');
   const [safetyEnabled, setSafetyEnabled] = useState(true);
   const [audioFeedback, setAudioFeedback] = useState(true);
+  const [studentSafetyMode, setStudentSafetyMode] = useState(() => localStorage.getItem('guider_student_safety') === 'true');
+  const [privacyFilter, setPrivacyFilter] = useState(() => localStorage.getItem('guider_privacy_filter') !== 'false');
+  const [hazardCheckpoints, setHazardCheckpoints] = useState(() => localStorage.getItem('guider_hazard_checkpoints') === 'true');
+
+  // Profile State
+  const [profile, setProfile] = useState(() => {
+    const saved = localStorage.getItem('guider_profile_v2');
+    return saved ? JSON.parse(saved) : {
+      name: 'Student Maker',
+      title: '8th Grade Innovator & Creator',
+      bio: 'Exploring maker crafts, electronics, papercraft, and DIY recipes step-by-step with GUIDER AI.',
+      skill: 'Intermediate',
+      avatar: '🚀'
+    };
+  });
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [tempProfile, setTempProfile] = useState(profile);
+  const [profileToast, setProfileToast] = useState(false);
 
   // Chat & Multimodal State
   const [inputText, setInputText] = useState('');
@@ -81,20 +104,24 @@ export default function App() {
   const [newTaskGoal, setNewTaskGoal] = useState('');
   const [newTaskInitialImage, setNewTaskInitialImage] = useState(null);
 
-  // Load tasks on startup from MongoDB
+  // Load tasks on startup from MongoDB or LocalStorage
+  const isInitialized = useRef(false);
+
   useEffect(() => {
     taskApi.getTasks().then(data => {
-      setTasks(data || []);
-      if (data && data.length > 0) {
-        const firstId = data[0]._id || data[0].id;
+      const loaded = data || [];
+      setTasks(loaded);
+      isInitialized.current = true;
+      if (loaded.length > 0) {
+        const firstId = loaded[0]._id || loaded[0].id;
         setActiveTaskId(firstId);
       }
     });
   }, []);
 
-  // Sync tasks to LocalStorage backup
+  // Sync tasks to LocalStorage backup whenever tasks change
   useEffect(() => {
-    if (tasks.length > 0) {
+    if (isInitialized.current) {
       localStorage.setItem('guider_tasks_v3', JSON.stringify(tasks));
     }
   }, [tasks]);
@@ -400,6 +427,25 @@ export default function App() {
           setActiveTab('tasks_list');
         }
         await taskApi.deleteTask(id);
+        setConfirmModal(null);
+      }
+    });
+  };
+
+  // --- Reset All Data (Danger Zone) ---
+  const handleResetAllData = () => {
+    setConfirmModal({
+      title: t.resetAllDataConfirmTitle,
+      message: t.resetAllDataConfirmMsg,
+      confirmText: t.resetAllDataConfirmBtn,
+      isDestructive: true,
+      icon: "trash",
+      onConfirm: async () => {
+        localStorage.removeItem('guider_tasks_v3');
+        setTasks([]);
+        setActiveTaskId(null);
+        setSelectedTaskForDetails(null);
+        setActiveTab('home');
         setConfirmModal(null);
       }
     });
@@ -1415,6 +1461,96 @@ export default function App() {
                 </p>
               </div>
 
+              {/* Security & Workshop Safety Section */}
+              <div className="glass-panel p-6 rounded-3xl space-y-4">
+                <div className="flex items-center space-x-2 text-emerald-400 font-bold text-sm">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span className="text-white font-bold">{t.securitySection}</span>
+                </div>
+
+                {/* Primary Safety Guardrails */}
+                <div className="flex justify-between items-center pt-2">
+                  <div>
+                    <div className="font-bold text-slate-200">{t.safetyToggle}</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">{t.safetyToggleDesc}</div>
+                  </div>
+                  <button
+                    onClick={() => setSafetyEnabled(!safetyEnabled)}
+                    className={`w-12 h-6 rounded-full transition relative ${safetyEnabled ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                  >
+                    <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition ${safetyEnabled ? 'left-7' : 'left-1'}`} />
+                  </button>
+                </div>
+
+                {/* Student & Minor Protection */}
+                <div className="flex justify-between items-center pt-3 border-t border-slate-800">
+                  <div>
+                    <div className="font-bold text-slate-200">{t.studentSafetyMode}</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">{t.studentSafetyDesc}</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = !studentSafetyMode;
+                      setStudentSafetyMode(next);
+                      localStorage.setItem('guider_student_safety', String(next));
+                    }}
+                    className={`w-12 h-6 rounded-full transition relative ${studentSafetyMode ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                  >
+                    <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition ${studentSafetyMode ? 'left-7' : 'left-1'}`} />
+                  </button>
+                </div>
+
+                {/* Photo Privacy Guard */}
+                <div className="flex justify-between items-center pt-3 border-t border-slate-800">
+                  <div>
+                    <div className="font-bold text-slate-200">{t.privacyFilter}</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">{t.privacyFilterDesc}</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = !privacyFilter;
+                      setPrivacyFilter(next);
+                      localStorage.setItem('guider_privacy_filter', String(next));
+                    }}
+                    className={`w-12 h-6 rounded-full transition relative ${privacyFilter ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                  >
+                    <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition ${privacyFilter ? 'left-7' : 'left-1'}`} />
+                  </button>
+                </div>
+
+                {/* Hazard Checkpoint Lock */}
+                <div className="flex justify-between items-center pt-3 border-t border-slate-800">
+                  <div>
+                    <div className="font-bold text-slate-200">{t.hazardAlerts}</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">{t.hazardAlertsDesc}</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = !hazardCheckpoints;
+                      setHazardCheckpoints(next);
+                      localStorage.setItem('guider_hazard_checkpoints', String(next));
+                    }}
+                    className={`w-12 h-6 rounded-full transition relative ${hazardCheckpoints ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                  >
+                    <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition ${hazardCheckpoints ? 'left-7' : 'left-1'}`} />
+                  </button>
+                </div>
+
+                {/* Audio Feedback */}
+                <div className="flex justify-between items-center pt-3 border-t border-slate-800">
+                  <div>
+                    <div className="font-bold text-slate-200">{t.audioToggle}</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">{t.audioToggleDesc}</div>
+                  </div>
+                  <button
+                    onClick={() => setAudioFeedback(!audioFeedback)}
+                    className={`w-12 h-6 rounded-full transition relative ${audioFeedback ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                  >
+                    <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition ${audioFeedback ? 'left-7' : 'left-1'}`} />
+                  </button>
+                </div>
+              </div>
+
               {/* Gemini API Key */}
               <div className="glass-panel p-6 rounded-3xl space-y-3">
                 <div className="flex justify-between items-center">
@@ -1436,33 +1572,23 @@ export default function App() {
                 />
               </div>
 
-              {/* Toggles */}
-              <div className="glass-panel p-6 rounded-3xl space-y-4">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="font-bold text-slate-200">{t.safetyToggle}</div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">{t.safetyToggleDesc}</div>
-                  </div>
-                  <button
-                    onClick={() => setSafetyEnabled(!safetyEnabled)}
-                    className={`w-12 h-6 rounded-full transition relative ${safetyEnabled ? 'bg-emerald-500' : 'bg-slate-700'}`}
-                  >
-                    <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition ${safetyEnabled ? 'left-7' : 'left-1'}`} />
-                  </button>
+              {/* Danger Zone & Reset */}
+              <div className="glass-panel p-6 rounded-3xl border border-red-500/30 space-y-3 bg-red-950/10">
+                <div className="flex items-center space-x-2 text-red-400 font-bold">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>{t.dangerZone}</span>
                 </div>
-
-                <div className="flex justify-between items-center pt-3 border-t border-slate-800">
-                  <div>
-                    <div className="font-bold text-slate-200">{t.audioToggle}</div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">{t.audioToggleDesc}</div>
-                  </div>
-                  <button
-                    onClick={() => setAudioFeedback(!audioFeedback)}
-                    className={`w-12 h-6 rounded-full transition relative ${audioFeedback ? 'bg-emerald-500' : 'bg-slate-700'}`}
-                  >
-                    <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition ${audioFeedback ? 'left-7' : 'left-1'}`} />
-                  </button>
-                </div>
+                <p className="text-slate-400 leading-relaxed">
+                  {t.resetAllDataDesc}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleResetAllData}
+                  className="px-4 py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 rounded-xl font-bold text-xs transition flex items-center space-x-1.5"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>{t.resetAllData}</span>
+                </button>
               </div>
             </div>
           )}
@@ -1470,14 +1596,148 @@ export default function App() {
           {/* ---------------- 7. PROFILE ---------------- */}
           {activeTab === 'profile' && (
             <div className="max-w-xl mx-auto p-6 md:p-8 space-y-6 animate-fadeIn text-xs">
-              <div className="text-center space-y-2">
-                <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 text-4xl flex items-center justify-center mx-auto shadow-glow-emerald font-bold">
-                  🚀
+              {profileToast && (
+                <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-2xl text-center font-bold animate-fadeIn flex items-center justify-center space-x-2">
+                  <Check className="w-4 h-4" />
+                  <span>{t.profileSavedToast}</span>
                 </div>
-                <h2 className="text-lg font-bold text-white">{t.profileRole}</h2>
-                <p className="text-xs text-emerald-400 font-semibold">{t.profileSub}</p>
+              )}
+
+              <div className="text-center space-y-3">
+                <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 text-slate-950 text-5xl flex items-center justify-center mx-auto shadow-glow-emerald font-bold transform hover:scale-105 transition cursor-pointer">
+                  {profile.avatar || '🚀'}
+                </div>
+                <div>
+                  <h2 className="text-xl font-extrabold text-white">{profile.name}</h2>
+                  <p className="text-xs text-emerald-400 font-semibold mt-0.5">{profile.title}</p>
+                </div>
+                <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed bg-slate-900/50 p-3 rounded-2xl border border-slate-800">
+                  {profile.bio}
+                </p>
+                
+                <div className="flex justify-center">
+                  <button
+                    onClick={() => {
+                      setTempProfile(profile);
+                      setIsEditingProfile(!isEditingProfile);
+                    }}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-bold text-xs flex items-center space-x-1.5 transition"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{isEditingProfile ? t.cancel : t.editProfile}</span>
+                  </button>
+                </div>
               </div>
 
+              {/* Edit Form */}
+              {isEditingProfile && (
+                <div className="glass-panel p-6 rounded-3xl space-y-4 border border-emerald-500/30 animate-fadeIn">
+                  <h3 className="font-bold text-sm text-white flex items-center space-x-2">
+                    <Edit3 className="w-4 h-4 text-emerald-400" />
+                    <span>{t.editProfile}</span>
+                  </h3>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1.5">Choose Avatar</label>
+                    <div className="flex flex-wrap gap-2">
+                      {['🚀', '⚡', '🛠️', '🎨', '💡', '🌿', '🤖', '🔬', '🍰', '📐'].map(emoji => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => setTempProfile(prev => ({ ...prev, avatar: emoji }))}
+                          className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition ${
+                            tempProfile.avatar === emoji 
+                              ? 'bg-emerald-500 text-slate-950 scale-110 shadow-glow-emerald' 
+                              : 'bg-slate-800/80 hover:bg-slate-700 text-white'
+                          }`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1.5">{t.profileNameLabel}</label>
+                    <input
+                      type="text"
+                      value={tempProfile.name}
+                      onChange={(e) => setTempProfile(prev => ({ ...prev, name: e.target.value }))}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1.5">{t.profileTitleLabel}</label>
+                    <input
+                      type="text"
+                      value={tempProfile.title}
+                      onChange={(e) => setTempProfile(prev => ({ ...prev, title: e.target.value }))}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1.5">{t.skillLevelLabel}</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'Beginner', label: t.skillBeginner },
+                        { id: 'Intermediate', label: t.skillIntermediate },
+                        { id: 'Advanced', label: t.skillExpert }
+                      ].map(lvl => (
+                        <button
+                          key={lvl.id}
+                          type="button"
+                          onClick={() => setTempProfile(prev => ({ ...prev, skill: lvl.id }))}
+                          className={`py-2 px-2 rounded-xl text-[10px] font-bold border transition text-center ${
+                            tempProfile.skill === lvl.id 
+                              ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' 
+                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                          }`}
+                        >
+                          {lvl.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1.5">{t.profileBioLabel}</label>
+                    <textarea
+                      rows={3}
+                      value={tempProfile.bio}
+                      onChange={(e) => setTempProfile(prev => ({ ...prev, bio: e.target.value }))}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div className="flex space-x-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingProfile(false)}
+                      className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl transition text-xs"
+                    >
+                      {t.cancel}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfile(tempProfile);
+                        localStorage.setItem('guider_profile_v2', JSON.stringify(tempProfile));
+                        setIsEditingProfile(false);
+                        setProfileToast(true);
+                        setTimeout(() => setProfileToast(false), 3000);
+                      }}
+                      className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-bold rounded-xl shadow-glow-emerald transition text-xs flex items-center justify-center space-x-1.5"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>{t.saveProfile}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Stats Cards */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="glass-panel p-5 rounded-3xl text-center">
                   <div className="text-2xl font-black text-emerald-400">{tasks.filter(item => item.status === 'Completed').length}</div>

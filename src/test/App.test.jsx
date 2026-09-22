@@ -92,4 +92,28 @@ describe('GUIDER App Component Rendering & Internationalization', () => {
     expect(screen.getByText(/✍️ गाइडर से पूछें/i)).toBeInTheDocument();
     expect(screen.getByText('डैशबोर्ड')).toBeInTheDocument();
   });
+
+  it('allows user to open and edit profile details', () => {
+    render(<App />);
+    const profileBtn = screen.getByTitle('Profile');
+    fireEvent.click(profileBtn);
+
+    const editBtn = screen.getByText('Edit Profile');
+    fireEvent.click(editBtn);
+
+    expect(screen.getByText('Save Profile')).toBeInTheDocument();
+    expect(screen.getByText('Choose Avatar')).toBeInTheDocument();
+  });
+
+  it('displays enhanced security and safety controls in settings', () => {
+    render(<App />);
+    const settingsTabBtn = screen.getAllByText('Settings & AI Configuration')[0];
+    fireEvent.click(settingsTabBtn);
+
+    expect(screen.getByText('Security & Workshop Safety')).toBeInTheDocument();
+    expect(screen.getByText('Student & Minor Protection Mode')).toBeInTheDocument();
+    expect(screen.getByText('Local Photo Privacy Guard')).toBeInTheDocument();
+    expect(screen.getByText('Hazard Checkpoint Lock')).toBeInTheDocument();
+    expect(screen.getByText('Reset All Local & Cloud Data')).toBeInTheDocument();
+  });
 });
