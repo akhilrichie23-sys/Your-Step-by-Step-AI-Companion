@@ -99,6 +99,18 @@ RULES:
     };
   }
 
+  if (text.includes('rough') || text.includes('iron')) {
+    return {
+      status: `Addressing paper roughness at Step ${step}.`,
+      step: `Place a clean sheet of parchment paper or a thin pressing cloth over the rough paper, and gently iron over it on low-to-medium heat (no steam) to flatten the fibers.`,
+      why: `Gentle heat and flat pressure smooth out rough cellulose fibers and uneven bumps, producing a clean, uniform paper surface.`,
+      safety: safetyEnabled ? 'Use caution with the warm iron and keep hands away from the heated surface.' : null,
+      promptForPhoto: `Take a photo of the smoothed, ironed paper surface.`,
+      isCompleted: step >= task.totalSteps,
+      stepNumber: step
+    };
+  }
+
   // Dynamic context for common categories
   if (task.category.includes('Craft') || task.title.includes('Paper')) {
     const steps = [
@@ -125,10 +137,17 @@ RULES:
       },
       {
         status: hasImage ? "Smooth transfer achieved with no corner folds." : "Transfer successful.",
-        step: "Place a dry pressing board and heavy books over the sheet, letting it press under weight for 4 hours.",
-        why: "Continuous even weight forces out moisture while keeping the sheet completely flat as it dries.",
+        step: "Place a dry pressing board and heavy books over the sheet, letting it press under weight for 4 hours until dry.",
+        why: "Continuous even weight forces out moisture while keeping the sheet flat as it dries.",
         safety: null,
-        promptForPhoto: "Take a picture of the dried finished paper.",
+        promptForPhoto: "Show me the dried paper sheet."
+      },
+      {
+        status: hasImage ? "The dried paper sheet has been inspected." : "Paper dried and ready for smoothing.",
+        step: "The paper is rough, so place a thin cloth or parchment paper over the sheet and iron the paper gently on low-to-medium heat (no steam) to smooth the surface.",
+        why: "Ironing with gentle heat flattens raised cellulose fibers and gives the handmade paper a crisp, smooth finish.",
+        safety: safetyEnabled ? "Use caution with the warm iron and do not leave it resting in one spot." : null,
+        promptForPhoto: "Take a picture of your finished, smooth ironed paper.",
         isCompleted: true
       }
     ];

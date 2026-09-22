@@ -85,4 +85,27 @@ describe('GUIDER AI Service & System Consistency', () => {
 
     expect(result.status.toLowerCase()).toContain('troubleshooting');
   });
+
+  it('should guide through ironing when paper is rough', async () => {
+    const task = {
+      title: 'Handmade Paper Project',
+      goal: 'Create smooth handmade paper',
+      category: 'Origami & Papercraft',
+      currentStepNum: 4,
+      totalSteps: 5,
+      completedSteps: 3,
+      history: []
+    };
+    const result = await analyzeWithGuider({
+      prompt: "The paper is rough so we ironed the paper.",
+      image: null,
+      task,
+      apiKey: '',
+      safetyEnabled: true
+    });
+
+    expect(result.step.toLowerCase()).toContain('iron');
+    expect(result.why.toLowerCase()).toContain('fiber');
+    expect(result.safety).toBeDefined();
+  });
 });
