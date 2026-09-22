@@ -1,6 +1,8 @@
 # GUIDER — Your Step-by-Step AI Companion
 
 > **"Show me what you're doing. I'll guide you through the next step."**
+> 
+> 🌐 **Live Demo:** [https://guider-ai-companion.onrender.com](https://guider-ai-companion.onrender.com)
 
 ---
 

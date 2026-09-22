@@ -1,9 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import App from '../App';
+import { TRANSLATIONS } from '../data/translations';
 
-describe('GUIDER App Component Rendering', () => {
+describe('GUIDER App Component Rendering & Internationalization', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   it('renders brand name and dashboard greeting without crashing', () => {
     render(<App />);
     expect(screen.getAllByText('GUIDER').length).toBeGreaterThan(0);
@@ -16,5 +21,75 @@ describe('GUIDER App Component Rendering', () => {
     expect(screen.getByText(/✍️ Ask GUIDER/i)).toBeInTheDocument();
     expect(screen.getByText(/🎤 Speak/i)).toBeInTheDocument();
     expect(screen.getByText(/➕ New Task/i)).toBeInTheDocument();
+  });
+
+  it('switches entire UI language to Spanish when ES is selected', () => {
+    render(<App />);
+    
+    // Find Spanish language button and click it
+    const esButtons = screen.getAllByRole('button', { name: /^es$/i });
+    fireEvent.click(esButtons[0]);
+
+    // Check Spanish translations appear
+    expect(screen.getByText('¿En qué estás trabajando ahora?')).toBeInTheDocument();
+    expect(screen.getByText(/📷 Mostrar/i)).toBeInTheDocument();
+    expect(screen.getByText(/✍️ Preguntar/i)).toBeInTheDocument();
+    expect(screen.getByText(/🎤 Hablar/i)).toBeInTheDocument();
+    expect(screen.getByText(/➕ Nueva Tarea/i)).toBeInTheDocument();
+    expect(screen.getByText('Panel Principal')).toBeInTheDocument();
+    expect(screen.getByText('Mis Proyectos')).toBeInTheDocument();
+    expect(screen.getByText('Chats Recientes')).toBeInTheDocument();
+    expect(screen.getByText('Configuración e IA')).toBeInTheDocument();
+  });
+
+  it('switches entire UI language to French when FR is selected', () => {
+    render(<App />);
+    
+    // Find French language button and click it
+    const frButtons = screen.getAllByRole('button', { name: /^fr$/i });
+    fireEvent.click(frButtons[0]);
+
+    // Check French translations appear
+    expect(screen.getByText('Sur quoi travaillez-vous en ce moment ?')).toBeInTheDocument();
+    expect(screen.getByText(/📷 Montrer/i)).toBeInTheDocument();
+    expect(screen.getByText(/✍️ Demander/i)).toBeInTheDocument();
+    expect(screen.getByText(/🎤 Parler/i)).toBeInTheDocument();
+    expect(screen.getByText(/➕ Nouvelle Tâche/i)).toBeInTheDocument();
+    expect(screen.getByText('Tableau de Bord')).toBeInTheDocument();
+    expect(screen.getByText('Mes Projets')).toBeInTheDocument();
+    expect(screen.getByText('Paramètres & IA')).toBeInTheDocument();
+  });
+
+  it('switches entire UI language to German when DE is selected', () => {
+    render(<App />);
+    const deButtons = screen.getAllByRole('button', { name: /^de$/i });
+    fireEvent.click(deButtons[0]);
+
+    expect(screen.getByText('Woran arbeitest du gerade?')).toBeInTheDocument();
+    expect(screen.getByText(/📷 Zeigen/i)).toBeInTheDocument();
+    expect(screen.getByText(/✍️ GUIDER fragen/i)).toBeInTheDocument();
+    expect(screen.getByText('Übersicht')).toBeInTheDocument();
+  });
+
+  it('switches entire UI language to Japanese when JA is selected', () => {
+    render(<App />);
+    const jaButtons = screen.getAllByRole('button', { name: /^ja$/i });
+    fireEvent.click(jaButtons[0]);
+
+    expect(screen.getByText('今、何を作っていますか？')).toBeInTheDocument();
+    expect(screen.getByText(/📷 見せる/i)).toBeInTheDocument();
+    expect(screen.getByText(/✍️ GUIDERに質問/i)).toBeInTheDocument();
+    expect(screen.getByText('ダッシュボード')).toBeInTheDocument();
+  });
+
+  it('switches entire UI language to Hindi when HI is selected', () => {
+    render(<App />);
+    const hiButtons = screen.getAllByRole('button', { name: /^hi$/i });
+    fireEvent.click(hiButtons[0]);
+
+    expect(screen.getByText('आप अभी किस पर काम कर रहे हैं?')).toBeInTheDocument();
+    expect(screen.getByText(/📷 दिखाएं/i)).toBeInTheDocument();
+    expect(screen.getByText(/✍️ गाइडर से पूछें/i)).toBeInTheDocument();
+    expect(screen.getByText('डैशबोर्ड')).toBeInTheDocument();
   });
 });
