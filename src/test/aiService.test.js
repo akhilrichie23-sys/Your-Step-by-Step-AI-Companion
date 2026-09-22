@@ -10,12 +10,13 @@ describe('GUIDER AI Service & System Consistency', () => {
   });
 
   it('should provide translations for all supported languages', () => {
-    expect(TRANSLATIONS).toHaveProperty('en');
-    expect(TRANSLATIONS).toHaveProperty('es');
-    expect(TRANSLATIONS).toHaveProperty('fr');
-    expect(TRANSLATIONS.en.tagline).toBeDefined();
-    expect(TRANSLATIONS.es.tagline).toBeDefined();
-    expect(TRANSLATIONS.fr.tagline).toBeDefined();
+    const supported = ['en', 'es', 'fr', 'de', 'pt', 'it', 'ja', 'hi'];
+    supported.forEach(code => {
+      expect(TRANSLATIONS).toHaveProperty(code);
+      expect(TRANSLATIONS[code].tagline).toBeDefined();
+      expect(TRANSLATIONS[code].heroTitle).toBeDefined();
+      expect(TRANSLATIONS[code].nextStep).toBeDefined();
+    });
   });
 
   it('should deliver structured single-step assessment via local reasoning engine', async () => {
@@ -107,5 +108,51 @@ describe('GUIDER AI Service & System Consistency', () => {
     expect(result.step.toLowerCase()).toContain('iron');
     expect(result.why.toLowerCase()).toContain('fiber');
     expect(result.safety).toBeDefined();
+  });
+
+  it('should respond conversationally when user is just chatting or saying hello', async () => {
+    const task = {
+      title: 'General Project',
+      goal: 'Explore making',
+      category: 'General',
+      currentStepNum: 1,
+      totalSteps: 5,
+      completedSteps: 0,
+      history: []
+    };
+    const result = await analyzeWithGuider({
+      prompt: "Hello! How are you doing today?",
+      image: null,
+      task,
+      apiKey: '',
+      safetyEnabled: true
+    });
+
+    expect(result.isChat).toBe(true);
+    expect(result.text).toBeDefined();
+    expect(result.step).toBeUndefined();
+  });
+
+  it('should activate step-by-step helping when user asks a specific query or guidance', async () => {
+    const task = {
+      title: 'Paper Craft Project',
+      goal: 'Make handmade recycled paper',
+      category: 'Origami & Papercraft',
+      currentStepNum: 1,
+      totalSteps: 5,
+      completedSteps: 0,
+      history: []
+    };
+    const result = await analyzeWithGuider({
+      prompt: "How do I start? What is my first step?",
+      image: null,
+      task,
+      apiKey: '',
+      safetyEnabled: true
+    });
+
+    expect(result.isChat).toBe(false);
+    expect(result.step).toBeDefined();
+    expect(result.why).toBeDefined();
   });
 });

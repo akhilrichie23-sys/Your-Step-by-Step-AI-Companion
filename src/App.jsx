@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CATEGORIES } from './data/initialTasks';
-import { TRANSLATIONS } from './data/translations';
+import { TRANSLATIONS, CATEGORY_TRANSLATIONS, SUPPORTED_LANGUAGES } from './data/translations';
 import { analyzeWithGuider } from './services/aiService';
 import { taskApi } from './services/taskApi';
 
@@ -39,6 +39,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [lang, setLang] = useState(() => localStorage.getItem('guider_lang') || 'en');
   const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+
+  const getCategoryLabel = (cat) => {
+    return CATEGORY_TRANSLATIONS[cat]?.[lang] || cat;
+  };
+
+  const getStatusLabel = (status) => {
+    if (status === 'Completed') return t.statusCompleted;
+    return t.statusActive;
+  };
 
   // Tasks State
   const [tasks, setTasks] = useState([]);
@@ -97,7 +106,7 @@ export default function App() {
     }
   }, [tasks, activeTab, isProcessing]);
 
-  const activeTask = tasks.find(t => (t._id === activeTaskId || t.id === activeTaskId)) || tasks[0] || null;
+  const activeTask = tasks.find(item => (item._id === activeTaskId || item.id === activeTaskId)) || tasks[0] || null;
 
   const handleLanguageChange = (code) => {
     setLang(code);
@@ -107,13 +116,23 @@ export default function App() {
   // --- Web Speech API ---
   const toggleSpeechRecognition = () => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert("Speech recognition isn't supported in this browser. Please try Google Chrome or Safari.");
+      alert(t.speechErrorAlert);
       return;
     }
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
-    recognition.lang = lang === 'es' ? 'es-ES' : lang === 'fr' ? 'fr-FR' : 'en-US';
+    const langMap = {
+      es: 'es-ES',
+      fr: 'fr-FR',
+      de: 'de-DE',
+      pt: 'pt-BR',
+      it: 'it-IT',
+      ja: 'ja-JP',
+      hi: 'hi-IN',
+      en: 'en-US'
+    };
+    recognition.lang = langMap[lang] || 'en-US';
     recognition.interimResults = false;
 
     if (isListening) {
@@ -167,7 +186,7 @@ export default function App() {
   const stopCameraStream = () => {
     if (videoRef.current && videoRef.current.srcObject) {
       const stream = videoRef.current.srcObject;
-      stream.getTracks().forEach(t => t.stop());
+      stream.getTracks().forEach(track => track.stop());
       videoRef.current.srcObject = null;
     }
   };
@@ -192,7 +211,7 @@ export default function App() {
     // If no active task exists, create a default blank one
     if (!currentTarget) {
       const autoCreated = await taskApi.createTask({
-        title: textToSend.slice(0, 30) || 'My Project',
+        title: textToSend.slice(0, 30) || t.newConversationDefault,
         category: 'General',
         goal: textToSend,
         currentStepTitle: 'Starting Project',
@@ -225,7 +244,7 @@ export default function App() {
       updatedDate: new Date().toISOString().split('T')[0]
     };
 
-    setTasks(prev => prev.map(t => (t._id === targetId || t.id === targetId) ? updatedTask : t));
+    setTasks(prev => prev.map(item => (item._id === targetId || item.id === targetId) ? updatedTask : item));
     setInputText('');
     setSelectedImage(null);
     setIsProcessing(true);
@@ -247,27 +266,36 @@ export default function App() {
         });
       }
 
+      const isChatMsg = Boolean(aiResponse.isChat);
       const aiMessage = {
         sender: 'guider',
-        status: aiResponse.status,
-        step: aiResponse.step,
-        why: aiResponse.why,
-        safety: aiResponse.safety,
-        promptForPhoto: aiResponse.promptForPhoto,
-        stepNumber: aiResponse.stepNumber,
+        isChat: isChatMsg,
+        text: aiResponse.text || '',
+        status: aiResponse.status || '',
+        step: aiResponse.step || '',
+        why: aiResponse.why || '',
+        safety: aiResponse.safety || null,
+        promptForPhoto: aiResponse.promptForPhoto || '',
+        stepNumber: aiResponse.stepNumber || updatedTask.currentStepNum,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
       const finalizedTask = {
         ...updatedTask,
-        currentStepNum: aiResponse.isCompleted ? updatedTask.totalSteps : Math.min(updatedTask.totalSteps, updatedTask.currentStepNum + 1),
-        completedSteps: Math.min(updatedTask.totalSteps, updatedTask.completedSteps + 1),
-        remainingSteps: Math.max(0, updatedTask.totalSteps - (aiResponse.stepNumber || updatedTask.currentStepNum + 1)),
-        status: aiResponse.isCompleted ? 'Completed' : 'Active',
+        currentStepNum: isChatMsg 
+          ? updatedTask.currentStepNum 
+          : (aiResponse.isCompleted ? updatedTask.totalSteps : Math.min(updatedTask.totalSteps, (aiResponse.stepNumber || updatedTask.currentStepNum + 1))),
+        completedSteps: isChatMsg 
+          ? updatedTask.completedSteps 
+          : Math.min(updatedTask.totalSteps, updatedTask.completedSteps + 1),
+        remainingSteps: isChatMsg 
+          ? updatedTask.remainingSteps 
+          : Math.max(0, updatedTask.totalSteps - (aiResponse.stepNumber || updatedTask.currentStepNum + 1)),
+        status: isChatMsg ? updatedTask.status : (aiResponse.isCompleted ? 'Completed' : 'Active'),
         history: [...updatedHistory, aiMessage]
       };
 
-      setTasks(prev => prev.map(t => (t._id === targetId || t.id === targetId) ? finalizedTask : t));
+      setTasks(prev => prev.map(item => (item._id === targetId || item.id === targetId) ? finalizedTask : item));
       
       // Persist to MongoDB
       if (currentTarget._id) {
@@ -287,7 +315,7 @@ export default function App() {
     const taskPayload = {
       title: newTaskTitle.trim(),
       category: newTaskCategory,
-      goal: newTaskGoal.trim() || 'Complete project with GUIDER assistance',
+      goal: newTaskGoal.trim() || t.describeGoalDefault,
       currentStepTitle: 'Initial Setup & Materials Verification',
       currentStepNum: 1,
       totalSteps: 5,
@@ -300,7 +328,7 @@ export default function App() {
     if (newTaskInitialImage) {
       taskPayload.history.push({
         sender: 'user',
-        text: `Starting new task: ${taskPayload.title}. Here are my starting materials.`,
+        text: `${taskPayload.title}.`,
         image: newTaskInitialImage,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       });
@@ -318,7 +346,7 @@ export default function App() {
     setActiveTab('chat');
 
     setTimeout(() => {
-      handleSendMessage("GUIDER, I am beginning this project. What is my first step?");
+      handleSendMessage(t.msgInitialPrompt);
     }, 200);
   };
 
@@ -326,9 +354,9 @@ export default function App() {
   const handleClearCurrentChat = () => {
     if (!activeTask) return;
     setConfirmModal({
-      title: "Clear Conversation History?",
-      message: "This will remove the current messages and reset your progress back to Step 1. Your project goal and title will stay safe.",
-      confirmText: "Yes, Clear Chat",
+      title: t.clearChatTitle,
+      message: t.clearChatMsg,
+      confirmText: t.clearChatConfirm,
       icon: "eraser",
       onConfirm: async () => {
         const targetId = activeTask._id || activeTask.id;
@@ -341,7 +369,7 @@ export default function App() {
           status: 'Active'
         };
 
-        setTasks(prev => prev.map(t => (t._id === targetId || t.id === targetId) ? resetTask : t));
+        setTasks(prev => prev.map(item => (item._id === targetId || item.id === targetId) ? resetTask : item));
         if (activeTask._id) {
           await taskApi.clearChat(activeTask._id);
         }
@@ -354,13 +382,13 @@ export default function App() {
   const handleDeleteTask = (id, e) => {
     if (e) e.stopPropagation();
     setConfirmModal({
-      title: "Delete This Project?",
-      message: "This project and all associated steps and photos will be permanently deleted from MongoDB Atlas.",
-      confirmText: "Delete Project",
+      title: t.deleteTaskTitle,
+      message: t.deleteTaskMsg,
+      confirmText: t.deleteTaskConfirm,
       isDestructive: true,
       icon: "trash",
       onConfirm: async () => {
-        const remaining = tasks.filter(t => (t._id !== id && t.id !== id));
+        const remaining = tasks.filter(item => (item._id !== id && item.id !== id));
         setTasks(remaining);
         if ((activeTaskId === id) && remaining.length > 0) {
           setActiveTaskId(remaining[0]._id || remaining[0].id);
@@ -375,6 +403,19 @@ export default function App() {
         setConfirmModal(null);
       }
     });
+  };
+
+  const getPageTitle = () => {
+    switch (activeTab) {
+      case 'home': return t.tagline;
+      case 'chat': return t.navChat;
+      case 'new_task': return t.navNewChat;
+      case 'tasks_list': return t.navProjects;
+      case 'check_work': return t.checkWorkTitle;
+      case 'settings': return t.settingsTitle;
+      case 'profile': return t.profile;
+      default: return t.tagline;
+    }
   };
 
   return (
@@ -398,11 +439,11 @@ export default function App() {
               </div>
               <div>
                 <div className="flex items-center space-x-1.5">
-                  <span className="text-base font-extrabold tracking-tight text-white">GUIDER</span>
+                  <span className="text-base font-extrabold tracking-tight text-white">{t.appName}</span>
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 </div>
                 <p className="text-[10px] text-emerald-400 font-semibold tracking-wider uppercase">
-                  AI Companion
+                  {t.aiCompanion}
                 </p>
               </div>
             </div>
@@ -419,7 +460,7 @@ export default function App() {
               }`}
             >
               <Layers className="w-4 h-4 text-emerald-400" />
-              <span>Dashboard</span>
+              <span>{t.navDashboard}</span>
             </button>
 
             <button
@@ -432,11 +473,11 @@ export default function App() {
             >
               <div className="flex items-center space-x-3">
                 <Compass className="w-4 h-4 text-teal-400" />
-                <span>GUIDER Chat</span>
+                <span>{t.navChat}</span>
               </div>
               {activeTask?.status === 'Active' && (
                 <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded-full">
-                  Step {activeTask.currentStepNum}
+                  {t.stepProgress} {activeTask.currentStepNum}
                 </span>
               )}
             </button>
@@ -450,7 +491,7 @@ export default function App() {
               }`}
             >
               <MessageSquarePlus className="w-4 h-4 text-cyan-400" />
-              <span>New Conversation</span>
+              <span>{t.navNewChat}</span>
             </button>
 
             <button
@@ -463,7 +504,7 @@ export default function App() {
             >
               <div className="flex items-center space-x-3">
                 <ListTodo className="w-4 h-4 text-slate-400" />
-                <span>My Projects</span>
+                <span>{t.navProjects}</span>
               </div>
               <span className="text-[10px] text-slate-500 font-mono">{tasks.length}</span>
             </button>
@@ -472,13 +513,13 @@ export default function App() {
           {/* Recent Conversations / Chats in Sidebar */}
           <div className="px-4 py-2 flex-1 overflow-y-auto">
             <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">
-              <span>Recent Chats</span>
+              <span>{t.recentChats}</span>
               <span className="text-slate-500 font-mono">{tasks.length}</span>
             </div>
 
             {tasks.length === 0 ? (
               <div className="p-3 rounded-xl bg-slate-900/40 border border-slate-850 text-center text-[11px] text-slate-500">
-                No chats yet
+                {t.noChatsYet}
               </div>
             ) : (
               <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
@@ -500,13 +541,13 @@ export default function App() {
                     >
                       <div className="flex items-center space-x-2.5 truncate flex-1 min-w-0 pr-2">
                         <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-emerald-400' : 'text-slate-500 group-hover:text-emerald-400'}`} />
-                        <span className="truncate font-medium">{task.title || 'Untitled Chat'}</span>
+                        <span className="truncate font-medium">{task.title || t.newConversationDefault}</span>
                       </div>
 
                       <button
                         type="button"
                         onClick={(e) => handleDeleteTask(taskId, e)}
-                        title="Delete chat"
+                        title={t.deleteChat}
                         className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 text-slate-500 hover:text-red-400 rounded-lg transition shrink-0"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -523,7 +564,7 @@ export default function App() {
         <div className="p-4 border-t border-slate-800/80 space-y-2">
           <div className="flex items-center space-x-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[10px] text-emerald-400">
             <Database className="w-3 h-3 text-emerald-400" />
-            <span>MongoDB Atlas Connected</span>
+            <span>{t.dbConnected}</span>
           </div>
 
           <button
@@ -536,21 +577,22 @@ export default function App() {
             <span>{t.settingsTitle}</span>
           </button>
 
-          <div className="flex items-center justify-between px-3.5 py-2 text-xs text-slate-400">
+          <div className="flex flex-col space-y-2 px-3.5 py-2 text-xs text-slate-400">
             <div className="flex items-center space-x-2">
               <Globe className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Language:</span>
+              <span>{t.language}:</span>
             </div>
-            <div className="flex space-x-1">
-              {['en', 'es', 'fr'].map(code => (
+            <div className="grid grid-cols-4 gap-1">
+              {SUPPORTED_LANGUAGES.map(item => (
                 <button
-                  key={code}
-                  onClick={() => handleLanguageChange(code)}
-                  className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
-                    lang === code ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'
+                  key={item.code}
+                  onClick={() => handleLanguageChange(item.code)}
+                  title={item.name}
+                  className={`text-[10px] uppercase font-bold py-1 rounded transition text-center ${
+                    lang === item.code ? 'bg-emerald-500 text-slate-950 shadow-sm' : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                   }`}
                 >
-                  {code}
+                  {item.label}
                 </button>
               ))}
             </div>
@@ -571,28 +613,44 @@ export default function App() {
               <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center font-black text-slate-950 text-xs">
                 G
               </div>
-              <span className="font-bold text-sm text-white">GUIDER</span>
+              <span className="font-bold text-sm text-white">{t.appName}</span>
             </div>
 
             <div className="hidden md:block">
-              <h1 className="text-sm font-bold text-white capitalize">
-                {activeTab === 'home' ? t.tagline : activeTab.replace('_', ' ')}
+              <h1 className="text-sm font-bold text-white">
+                {getPageTitle()}
               </h1>
               <p className="text-[11px] text-slate-400">
-                {activeTask ? `Current Project: ${activeTask.title}` : 'Ready for your first project'}
+                {activeTask ? `${t.currentProjectLabel} ${activeTask.title}` : t.readyFirstProject}
               </p>
             </div>
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* Mobile Language Selector */}
+            <div className="flex md:hidden overflow-x-auto max-w-[140px] space-x-1 mr-1 py-1">
+              {SUPPORTED_LANGUAGES.map(item => (
+                <button
+                  key={item.code}
+                  onClick={() => handleLanguageChange(item.code)}
+                  title={item.name}
+                  className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                    lang === item.code ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 bg-slate-900/60'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
             {activeTab === 'chat' && activeTask && (
               <button
                 onClick={handleClearCurrentChat}
-                title="Clear current chat"
+                title={t.clearChat}
                 className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition border border-slate-700"
               >
                 <Eraser className="w-3.5 h-3.5 text-slate-400" />
-                <span className="hidden sm:inline">Clear Chat</span>
+                <span className="hidden sm:inline">{t.clearChat}</span>
               </button>
             )}
 
@@ -601,13 +659,13 @@ export default function App() {
               className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-sm"
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
-              <span>New Project</span>
+              <span>{t.newProject}</span>
             </button>
 
             <button
               onClick={() => setActiveTab('profile')}
               className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center text-xs font-bold transition border border-slate-700"
-              title="Profile"
+              title={t.profile}
             >
               🚀
             </button>
@@ -627,10 +685,10 @@ export default function App() {
                 <div className="relative z-10 space-y-3 max-w-2xl">
                   <div className="flex items-center space-x-2">
                     <span className="text-xs font-bold tracking-wider uppercase text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-                      Step-by-Step AI Companion
+                      {t.stepByStepBadge}
                     </span>
                     <span className="text-slate-500">•</span>
-                    <span className="text-xs text-slate-400">Database Connected</span>
+                    <span className="text-xs text-slate-400">{t.dbConnected}</span>
                   </div>
                   <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight leading-tight">
                     {t.heroTitle}
@@ -644,7 +702,7 @@ export default function App() {
               {/* 4 Action Launchers */}
               <div>
                 <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 px-1">
-                  Start an action:
+                  {t.startAnAction}
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <button
@@ -707,7 +765,7 @@ export default function App() {
                       {t.activeTask}
                     </span>
                     <span className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                      {activeTask.category}
+                      {getCategoryLabel(activeTask.category)}
                     </span>
                   </div>
 
@@ -719,7 +777,7 @@ export default function App() {
                       </div>
                       <div className="flex items-center space-x-2 self-start md:self-auto">
                         <span className="text-xs font-bold text-emerald-400 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-700">
-                          Step {activeTask.currentStepNum} of {activeTask.totalSteps}
+                          {t.stepProgress} {activeTask.currentStepNum} {t.ofSteps} {activeTask.totalSteps}
                         </span>
                         <button
                           onClick={() => setActiveTab('chat')}
@@ -741,9 +799,9 @@ export default function App() {
                     <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
                       <div className="flex items-center space-x-1.5">
                         <Layers className="w-4 h-4 text-emerald-400" />
-                        <span>Current Stage: <strong className="text-slate-200">{activeTask.currentStepTitle || 'Active Guided Phase'}</strong></span>
+                        <span>{t.currentStage} <strong className="text-slate-200">{activeTask.currentStepTitle || t.activeGuidedPhase}</strong></span>
                       </div>
-                      <span>Updated {activeTask.updatedDate}</span>
+                      <span>{t.updated} {activeTask.updatedDate}</span>
                     </div>
                   </div>
                 </div>
@@ -752,15 +810,15 @@ export default function App() {
                   <div className="w-12 h-12 rounded-2xl bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
                     <Compass className="w-6 h-6 text-emerald-400" />
                   </div>
-                  <h3 className="text-sm font-bold text-white">No active project right now</h3>
+                  <h3 className="text-sm font-bold text-white">{t.noActiveProject}</h3>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                    Click "New Task" or "Ask GUIDER" above to begin your first guided project!
+                    {t.noActiveProjectDesc}
                   </p>
                   <button
                     onClick={() => setActiveTab('new_task')}
                     className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl transition"
                   >
-                    Create My First Task
+                    {t.createFirstTask}
                   </button>
                 </div>
               )}
@@ -770,10 +828,10 @@ export default function App() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center px-1">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                      My Previous Chats & Projects ({tasks.length})
+                      {t.previousProjects} ({tasks.length})
                     </span>
                     <button onClick={() => setActiveTab('tasks_list')} className="text-xs text-emerald-400 hover:underline">
-                      View All
+                      {t.viewAll}
                     </button>
                   </div>
 
@@ -790,15 +848,15 @@ export default function App() {
                           className="glass-panel p-4 rounded-2xl hover:border-slate-700 cursor-pointer transition space-y-2.5 relative group"
                         >
                           <div className="flex justify-between items-start">
-                            <span className="text-[10px] font-bold text-emerald-400/90 uppercase">{task.category}</span>
+                            <span className="text-[10px] font-bold text-emerald-400/90 uppercase">{getCategoryLabel(task.category)}</span>
                             <div className="flex items-center space-x-1.5">
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${task.status === 'Completed' ? 'bg-teal-500/20 text-teal-300' : 'bg-emerald-500/10 text-emerald-400'}`}>
-                                {task.status}
+                                {getStatusLabel(task.status)}
                               </span>
                               <button
                                 type="button"
                                 onClick={(e) => handleDeleteTask(taskId, e)}
-                                title="Delete project"
+                                title={t.deleteChat}
                                 className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 text-slate-500 hover:text-red-400 rounded-lg transition"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -807,9 +865,9 @@ export default function App() {
                           </div>
                           <h4 className="text-xs font-bold text-white truncate group-hover:text-emerald-300 transition">{task.title}</h4>
                           <div className="text-[11px] text-slate-400 flex justify-between items-center pt-2 border-t border-slate-800">
-                            <span>{task.completedSteps || 0}/{task.totalSteps || 5} steps</span>
+                            <span>{task.completedSteps || 0}/{task.totalSteps || 5} {t.stepsWord}</span>
                             <span className="text-emerald-400 font-semibold flex items-center space-x-1">
-                              <span>Open</span>
+                              <span>{t.open}</span>
                               <ChevronRight className="w-3 h-3" />
                             </span>
                           </div>
@@ -830,11 +888,11 @@ export default function App() {
               <div className="bg-[#0c1326] px-6 py-3 border-b border-slate-800/80 flex justify-between items-center shrink-0">
                 <div className="flex items-center space-x-3">
                   <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
-                    Step {activeTask?.currentStepNum || 1} / {activeTask?.totalSteps || 5}
+                    {t.stepProgress} {activeTask?.currentStepNum || 1} / {activeTask?.totalSteps || 5}
                   </span>
                   <div>
-                    <h3 className="text-xs md:text-sm font-bold text-white">{activeTask?.title || 'New Conversation'}</h3>
-                    <p className="text-[10px] text-slate-400 line-clamp-1">{activeTask?.goal || 'Describe what you are working on'}</p>
+                    <h3 className="text-xs md:text-sm font-bold text-white">{activeTask?.title || t.newConversationDefault}</h3>
+                    <p className="text-[10px] text-slate-400 line-clamp-1">{activeTask?.goal || t.describeGoalDefault}</p>
                   </div>
                 </div>
 
@@ -844,7 +902,7 @@ export default function App() {
                     className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold flex items-center space-x-1 transition"
                   >
                     <Eraser className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Clear</span>
+                    <span>{t.clear}</span>
                   </button>
 
                   <button
@@ -852,7 +910,7 @@ export default function App() {
                     className="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center space-x-1 transition"
                   >
                     <Camera className="w-3.5 h-3.5" />
-                    <span>Check Work</span>
+                    <span>{t.checkWork}</span>
                   </button>
                 </div>
               </div>
@@ -864,9 +922,9 @@ export default function App() {
                     <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mx-auto mb-4">
                       <Compass className="w-8 h-8" />
                     </div>
-                    <h3 className="text-base font-bold text-white">Start your project step-by-step</h3>
+                    <h3 className="text-base font-bold text-white">{t.startProjectPrompt}</h3>
                     <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                      Send a photo, speak into the mic, or describe what you have done so far. GUIDER will give you ONE clear next action.
+                      {t.startProjectPromptSub}
                     </p>
                   </div>
                 )}
@@ -882,11 +940,20 @@ export default function App() {
                           >
                             <img src={msg.image} className="w-full h-full object-cover group-hover:scale-105 transition" alt="User progress" />
                             <div className="absolute bottom-2 right-2 bg-black/60 px-2 py-1 rounded text-[10px] text-white backdrop-blur">
-                              🔍 Expand
+                              🔍 {t.expandImage}
                             </div>
                           </div>
                         )}
                         <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                        <span className="text-[10px] text-slate-400 block text-right font-mono">{msg.timestamp}</span>
+                      </div>
+                    ) : (msg.isChat || (!msg.step && msg.text)) ? (
+                      <div className="max-w-[85%] md:max-w-[70%] glass-panel rounded-3xl rounded-tl-md p-4 text-xs space-y-2 shadow-lg border border-slate-800">
+                        <div className="flex items-center space-x-2 text-emerald-400 font-bold text-[11px]">
+                          <Compass className="w-3.5 h-3.5 text-teal-400" />
+                          <span>GUIDER</span>
+                        </div>
+                        <p className="text-slate-200 leading-relaxed whitespace-pre-wrap">{msg.text || msg.status}</p>
                         <span className="text-[10px] text-slate-400 block text-right font-mono">{msg.timestamp}</span>
                       </div>
                     ) : (
@@ -943,7 +1010,7 @@ export default function App() {
                         {/* 6. ACTION BUTTONS */}
                         <div className="pt-2 flex flex-wrap gap-2 border-t border-slate-800">
                           <button
-                            onClick={() => handleSendMessage("I completed this step! Here is my progress update.", selectedImage)}
+                            onClick={() => handleSendMessage(t.msgDidIt, selectedImage)}
                             className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold rounded-xl text-xs flex items-center space-x-1.5 transition active:scale-95 shadow-md shadow-emerald-500/20"
                           >
                             <Check className="w-3.5 h-3.5 stroke-[3]" />
@@ -966,14 +1033,14 @@ export default function App() {
                           </button>
 
                           <button
-                            onClick={() => handleSendMessage("Can you give me an alternative approach or troubleshoot this?")}
+                            onClick={() => handleSendMessage(t.msgAskTroubleshoot)}
                             className="px-3 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-300 rounded-xl text-xs transition"
                           >
                             💬 {t.askSomething}
                           </button>
 
                           <button
-                            onClick={() => handleSendMessage("Skip this step and proceed to the next milestone.")}
+                            onClick={() => handleSendMessage(t.msgSkipStep)}
                             className="px-3 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-xl text-xs transition"
                           >
                             ⏭️ {t.skipStep}
@@ -989,7 +1056,7 @@ export default function App() {
                     <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
                       <Sparkles className="w-4 h-4 animate-spin" />
                     </div>
-                    <span className="font-medium">GUIDER is assessing your current situation...</span>
+                    <span className="font-medium">{t.assessingSituation}</span>
                   </div>
                 )}
                 <div ref={chatEndRef} />
@@ -1013,7 +1080,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={openLiveCamera}
-                    title="Camera"
+                    title={t.startCamera}
                     className="w-11 h-11 rounded-2xl bg-slate-800 hover:bg-slate-700 text-emerald-400 flex items-center justify-center border border-slate-700 transition shrink-0"
                   >
                     <Camera className="w-5 h-5" />
@@ -1022,7 +1089,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    title="Upload"
+                    title={t.uploadPhoto}
                     className="w-11 h-11 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center border border-slate-700 transition shrink-0"
                   >
                     <Upload className="w-5 h-5" />
@@ -1031,7 +1098,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={toggleSpeechRecognition}
-                    title="Speak"
+                    title={t.speak}
                     className={`w-11 h-11 rounded-2xl flex items-center justify-center border transition shrink-0 ${
                       isListening 
                         ? 'bg-red-500 text-white border-red-400 animate-pulse' 
@@ -1093,7 +1160,7 @@ export default function App() {
                     >
                       <Camera className="w-8 h-8 mb-2 text-emerald-400 group-hover:scale-110 transition" />
                       <span className="text-xs font-bold">{t.startCamera}</span>
-                      <span className="text-[10px] text-slate-500 mt-0.5">Use camera</span>
+                      <span className="text-[10px] text-slate-500 mt-0.5">{t.useCameraDesc}</span>
                     </button>
 
                     <button
@@ -1102,16 +1169,16 @@ export default function App() {
                     >
                       <Upload className="w-8 h-8 mb-2 text-teal-400 group-hover:scale-110 transition" />
                       <span className="text-xs font-bold">{t.uploadPhoto}</span>
-                      <span className="text-[10px] text-slate-500 mt-0.5">From gallery</span>
+                      <span className="text-[10px] text-slate-500 mt-0.5">{t.fromGalleryDesc}</span>
                     </button>
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5">Optional context note:</label>
+                  <label className="block text-xs font-bold text-slate-300 mb-1.5">{t.contextNoteLabel}</label>
                   <input
                     type="text"
-                    placeholder="e.g. 'I let it cure for 15 minutes'..."
+                    placeholder={t.contextNotePlaceholder}
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
                     className="w-full bg-[#080d1a] border border-slate-800 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
@@ -1122,27 +1189,27 @@ export default function App() {
               <div className="grid grid-cols-3 gap-3 text-center text-xs">
                 <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-300">
                   <div className="font-bold">{t.goodStatus}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Proceed immediately</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">{t.goodStatusDesc}</div>
                 </div>
                 <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-300">
                   <div className="font-bold">{t.improveStatus}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Guided correction</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">{t.improveStatusDesc}</div>
                 </div>
                 <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-blue-300">
                   <div className="font-bold">{t.unclearStatus}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Clarification prompt</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">{t.unclearStatusDesc}</div>
                 </div>
               </div>
 
               <button
                 onClick={() => {
                   setActiveTab('chat');
-                  handleSendMessage("Here is my work photo to verify.", selectedImage);
+                  handleSendMessage(t.msgVerifyWork, selectedImage);
                 }}
                 disabled={!selectedImage && !inputText}
                 className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 text-slate-950 font-bold text-xs rounded-2xl shadow-glow-emerald transition"
               >
-                Submit for Instant AI Verification
+                {t.submitVerification}
               </button>
             </div>
           )}
@@ -1151,16 +1218,16 @@ export default function App() {
           {activeTab === 'new_task' && (
             <div className="max-w-2xl mx-auto p-6 md:p-8 space-y-6 animate-fadeIn">
               <div>
-                <h2 className="text-xl font-bold text-white">Start a New Project / Chat</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Enter your project title and what you plan to accomplish</p>
+                <h2 className="text-xl font-bold text-white">{t.newProjectTitle}</h2>
+                <p className="text-xs text-slate-400 mt-0.5">{t.newProjectSub}</p>
               </div>
 
               <div className="space-y-4 text-xs">
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1.5">Project Title</label>
+                  <label className="block font-bold text-slate-300 mb-1.5">{t.projectTitleLabel}</label>
                   <input
                     type="text"
-                    placeholder="e.g. Sourdough Bread, Robotics Assembly, Wooden Planter..."
+                    placeholder={t.projectTitlePlaceholder}
                     value={newTaskTitle}
                     onChange={(e) => setNewTaskTitle(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-3.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-xs"
@@ -1168,7 +1235,7 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1.5">Category</label>
+                  <label className="block font-bold text-slate-300 mb-1.5">{t.categoryLabel}</label>
                   <div className="grid grid-cols-3 gap-2">
                     {CATEGORIES.map(cat => (
                       <button
@@ -1181,17 +1248,17 @@ export default function App() {
                             : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
                         }`}
                       >
-                        {cat}
+                        {getCategoryLabel(cat)}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1.5">Desired Goal / Final Product</label>
+                  <label className="block font-bold text-slate-300 mb-1.5">{t.goalLabel}</label>
                   <textarea
                     rows={3}
-                    placeholder="Describe what you want to achieve or build..."
+                    placeholder={t.goalPlaceholder}
                     value={newTaskGoal}
                     onChange={(e) => setNewTaskGoal(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-3.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-xs"
@@ -1199,7 +1266,7 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1.5">Starting Photo (Optional)</label>
+                  <label className="block font-bold text-slate-300 mb-1.5">{t.startingPhotoLabel}</label>
                   {newTaskInitialImage ? (
                     <div className="relative w-full h-44 rounded-2xl overflow-hidden border border-emerald-500">
                       <img src={newTaskInitialImage} className="w-full h-full object-cover" alt="Starting preview" />
@@ -1218,7 +1285,7 @@ export default function App() {
                         className="p-4 bg-slate-900 border border-dashed border-slate-700 hover:border-emerald-500 rounded-2xl flex flex-col items-center justify-center text-slate-400 hover:text-emerald-400 transition"
                       >
                         <Upload className="w-5 h-5 mb-1" />
-                        <span className="text-[11px] font-bold">Upload Materials Photo</span>
+                        <span className="text-[11px] font-bold">{t.uploadMaterials}</span>
                       </button>
                       <button
                         type="button"
@@ -1226,7 +1293,7 @@ export default function App() {
                         className="p-4 bg-slate-900 border border-dashed border-slate-700 hover:border-emerald-500 rounded-2xl flex flex-col items-center justify-center text-slate-400 hover:text-emerald-400 transition"
                       >
                         <Camera className="w-5 h-5 mb-1" />
-                        <span className="text-[11px] font-bold">Snap Camera Photo</span>
+                        <span className="text-[11px] font-bold">{t.snapCamera}</span>
                       </button>
                     </div>
                   )}
@@ -1238,7 +1305,7 @@ export default function App() {
                 disabled={!newTaskTitle.trim()}
                 className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 text-slate-950 font-bold text-xs rounded-2xl shadow-glow-emerald transition"
               >
-                Launch New Project
+                {t.launchProject}
               </button>
             </div>
           )}
@@ -1248,26 +1315,26 @@ export default function App() {
             <div className="max-w-4xl mx-auto p-6 md:p-8 space-y-6 animate-fadeIn">
               <div className="flex justify-between items-center">
                 <div>
-                  <h2 className="text-xl font-bold text-white">My Projects & History</h2>
-                  <p className="text-xs text-slate-400">All registered projects stored in MongoDB Atlas</p>
+                  <h2 className="text-xl font-bold text-white">{t.projectsHistoryTitle}</h2>
+                  <p className="text-xs text-slate-400">{t.projectsHistorySub}</p>
                 </div>
                 <button
                   onClick={() => setActiveTab('new_task')}
                   className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow transition flex items-center space-x-1"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>New Project</span>
+                  <span>{t.newProject}</span>
                 </button>
               </div>
 
               {tasks.length === 0 ? (
                 <div className="glass-panel p-10 rounded-3xl text-center space-y-3">
-                  <p className="text-slate-400 text-xs">No projects created yet. Start something fresh!</p>
+                  <p className="text-slate-400 text-xs">{t.noProjectsYet}</p>
                   <button
                     onClick={() => setActiveTab('new_task')}
                     className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl transition"
                   >
-                    Create Project
+                    {t.createProjectBtn}
                   </button>
                 </div>
               ) : (
@@ -1284,14 +1351,14 @@ export default function App() {
                         className="glass-panel p-5 rounded-3xl space-y-3 hover:border-slate-700 transition cursor-pointer relative group"
                       >
                         <div className="flex justify-between items-start">
-                          <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">{task.category}</span>
+                          <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">{getCategoryLabel(task.category)}</span>
                           <div className="flex items-center space-x-2">
                             <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${task.status === 'Completed' ? 'bg-teal-500/20 text-teal-300' : 'bg-emerald-500/10 text-emerald-400'}`}>
-                              {task.status}
+                              {getStatusLabel(task.status)}
                             </span>
                             <button
                               onClick={(e) => handleDeleteTask(taskId, e)}
-                              title="Delete project"
+                              title={t.deleteChat}
                               className="text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition p-1"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1309,7 +1376,7 @@ export default function App() {
                         </div>
 
                         <div className="flex items-center justify-between pt-2 text-xs border-t border-slate-800">
-                          <span className="text-slate-400">Step {task.currentStepNum} of {task.totalSteps}</span>
+                          <span className="text-slate-400">{t.stepProgress} {task.currentStepNum} {t.ofSteps} {task.totalSteps}</span>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1318,7 +1385,7 @@ export default function App() {
                             }}
                             className="text-emerald-400 font-bold hover:underline flex items-center space-x-1"
                           >
-                            <span>Open in Chat</span>
+                            <span>{t.openInChat}</span>
                             <ChevronRight className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -1338,13 +1405,13 @@ export default function App() {
               {/* Database Indicator */}
               <div className="glass-panel p-6 rounded-3xl space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-200">Database Engine</span>
+                  <span className="font-bold text-slate-200">{t.dbEngine}</span>
                   <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-2.5 py-1 rounded-full border border-emerald-500/30">
-                    MongoDB Atlas (Live)
+                    {t.dbLive}
                   </span>
                 </div>
                 <p className="text-slate-400 leading-relaxed">
-                  Your project chats and steps are saved to MongoDB Atlas in the cloud.
+                  {t.dbEngineDesc}
                 </p>
               </div>
 
@@ -1374,7 +1441,7 @@ export default function App() {
                 <div className="flex justify-between items-center">
                   <div>
                     <div className="font-bold text-slate-200">{t.safetyToggle}</div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">Show cautionary alerts before high-risk physical steps</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">{t.safetyToggleDesc}</div>
                   </div>
                   <button
                     onClick={() => setSafetyEnabled(!safetyEnabled)}
@@ -1387,7 +1454,7 @@ export default function App() {
                 <div className="flex justify-between items-center pt-3 border-t border-slate-800">
                   <div>
                     <div className="font-bold text-slate-200">{t.audioToggle}</div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">Enable audio cues on step transitions</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">{t.audioToggleDesc}</div>
                   </div>
                   <button
                     onClick={() => setAudioFeedback(!audioFeedback)}
@@ -1407,18 +1474,18 @@ export default function App() {
                 <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 text-4xl flex items-center justify-center mx-auto shadow-glow-emerald font-bold">
                   🚀
                 </div>
-                <h2 className="text-lg font-bold text-white">Student Maker</h2>
-                <p className="text-xs text-emerald-400 font-semibold">8th Grade Innovator & Creator</p>
+                <h2 className="text-lg font-bold text-white">{t.profileRole}</h2>
+                <p className="text-xs text-emerald-400 font-semibold">{t.profileSub}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="glass-panel p-5 rounded-3xl text-center">
-                  <div className="text-2xl font-black text-emerald-400">{tasks.filter(t => t.status === 'Completed').length}</div>
-                  <div className="text-[10px] text-slate-400 uppercase font-bold mt-1">Completed Projects</div>
+                  <div className="text-2xl font-black text-emerald-400">{tasks.filter(item => item.status === 'Completed').length}</div>
+                  <div className="text-[10px] text-slate-400 uppercase font-bold mt-1">{t.completedProjects}</div>
                 </div>
                 <div className="glass-panel p-5 rounded-3xl text-center">
-                  <div className="text-2xl font-black text-teal-300">{tasks.filter(t => t.status === 'Active').length}</div>
-                  <div className="text-[10px] text-slate-400 uppercase font-bold mt-1">Active Projects</div>
+                  <div className="text-2xl font-black text-teal-300">{tasks.filter(item => item.status === 'Active').length}</div>
+                  <div className="text-[10px] text-slate-400 uppercase font-bold mt-1">{t.activeProjects}</div>
                 </div>
               </div>
             </div>
@@ -1429,11 +1496,11 @@ export default function App() {
         {/* ===================== MOBILE BOTTOM BAR ===================== */}
         <div className="md:hidden glass-nav px-4 py-2.5 flex justify-around items-center z-20 shrink-0">
           {[
-            { id: 'home', label: 'Home', icon: Layers },
-            { id: 'chat', label: 'Chat', icon: Compass },
-            { id: 'new_task', label: 'New', icon: Plus, isFab: true },
-            { id: 'tasks_list', label: 'Projects', icon: ListTodo },
-            { id: 'settings', label: 'Settings', icon: SettingsIcon },
+            { id: 'home', label: t.tabHome, icon: Layers },
+            { id: 'chat', label: t.tabChat, icon: Compass },
+            { id: 'new_task', label: t.tabNew, icon: Plus, isFab: true },
+            { id: 'tasks_list', label: t.tabProjects, icon: ListTodo },
+            { id: 'settings', label: t.tabSettings, icon: SettingsIcon },
           ].map(item => {
             const Icon = item.icon;
             if (item.isFab) {
@@ -1466,7 +1533,7 @@ export default function App() {
       {cameraModal && (
         <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-between p-6 animate-fadeIn">
           <div className="w-full max-w-lg flex justify-between items-center text-white">
-            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Live Camera Viewfinder</span>
+            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">{t.cameraViewfinderTitle}</span>
             <button
               onClick={() => {
                 stopCameraStream();
@@ -1482,7 +1549,7 @@ export default function App() {
             <video ref={videoRef} playsInline autoPlay className="w-full h-full object-cover" />
             <div className="absolute inset-8 border-2 border-dashed border-emerald-400/40 rounded-3xl pointer-events-none flex items-center justify-center">
               <span className="text-xs text-emerald-300 bg-slate-950/80 px-3 py-1.5 rounded-full backdrop-blur">
-                Frame your work piece here
+                {t.cameraFrameText}
               </span>
             </div>
           </div>
@@ -1502,7 +1569,7 @@ export default function App() {
           <div className="w-full max-w-sm glass-panel rounded-3xl p-6 space-y-4 shadow-2xl border border-slate-700">
             <div className="flex items-center space-x-2 text-emerald-400">
               <HelpCircle className="w-5 h-5" />
-              <h3 className="font-bold text-sm text-white">Why This Step?</h3>
+              <h3 className="font-bold text-sm text-white">{t.whyModalTitle}</h3>
             </div>
             <p className="text-xs text-slate-300 bg-slate-950/70 p-4 rounded-2xl border border-slate-800 leading-relaxed">
               {whyModal.why}
@@ -1511,7 +1578,7 @@ export default function App() {
               onClick={() => setWhyModal(null)}
               className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl transition"
             >
-              Understood
+              {t.understood}
             </button>
           </div>
         </div>
@@ -1549,7 +1616,7 @@ export default function App() {
               </div>
               <div>
                 <h3 className="font-bold text-sm text-white">{confirmModal.title}</h3>
-                <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">Confirmation Required</p>
+                <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">{t.confirmationRequired}</p>
               </div>
             </div>
 
@@ -1563,7 +1630,7 @@ export default function App() {
                 onClick={() => setConfirmModal(null)}
                 className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl border border-slate-700 transition"
               >
-                Cancel
+                {t.cancel}
               </button>
               <button
                 type="button"
@@ -1574,7 +1641,7 @@ export default function App() {
                     : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
                 }`}
               >
-                {confirmModal.confirmText || 'Confirm'}
+                {confirmModal.confirmText || t.understood}
               </button>
             </div>
           </div>
